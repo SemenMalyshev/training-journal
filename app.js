@@ -431,25 +431,46 @@
     const doc = new window.jspdf.jsPDF({unit:'mm',format:'a4'});
     doc.addFileToVFS('NotoSans-Regular.ttf',pdfFontBase64);
     doc.addFont('NotoSans-Regular.ttf','NotoSans','normal');
-    doc.setFont('NotoSans','normal');
-    const left = 16, right = 194, bottom = 278;
-    let y = 19;
-    function line(text,size=10,space=3) {
-      doc.setFontSize(size);
+    const fontScale = {normal:1,large:1.25,largest:1.5}[state.preferences.fontSize];
+    const uiScale = {normal:1,large:1.15,largest:1.3}[state.preferences.uiSize];
+    const palettes = {
+      light:{paper:[255,255,255],text:[23,43,40],accent:[169,53,18],line:[197,210,198]},
+      dark:{paper:[16,26,21],text:[244,248,243],accent:[255,154,115],line:[116,141,122]},
+      contrast:{paper:[0,0,0],text:[255,255,255],accent:[255,228,91],line:[255,255,255]}
+    };
+    const palette = palettes[state.preferences.theme];
+    const left = 16*uiScale, right = 210-left, top = 19*uiScale, bottom = 297-left;
+    let y;
+    function paintPage(add=false) {
+      if (add) doc.addPage();
+      doc.setFillColor(...palette.paper);
+      doc.rect(0,0,210,297,'F');
+      doc.setFont('NotoSans','normal');
+      y = top;
+    }
+    paintPage();
+    function line(text,size=10,space=3,color=palette.text) {
+      const renderedSize = size*fontScale;
+      doc.setFontSize(renderedSize);
       const parts = doc.splitTextToSize(String(text),right-left);
-      const leading = size >= 16 ? 7.6 : size >= 12 ? 6.5 : 5.2;
+      const leading = renderedSize*0.52;
       for (const part of parts) {
-        if (y + leading > bottom) { doc.addPage(); y=19; doc.setFont('NotoSans','normal'); doc.setFontSize(size); }
+        if (y + leading > bottom) paintPage(true);
+        doc.setFontSize(renderedSize);
+        doc.setTextColor(...color);
         doc.text(part,left,y);
         y += leading;
       }
-      y += space;
+      y += space*uiScale;
     }
     function rule() {
-      if (y+4 > bottom) { doc.addPage(); y=19; }
-      doc.setDrawColor(213,225,215); doc.line(left,y,right,y); y += 6;
+      if (y+6*uiScale > bottom) paintPage(true);
+      doc.setDrawColor(...palette.line);
+      doc.setLineWidth(0.25*uiScale);
+      doc.line(left,y,right,y);
+      y += 6*uiScale;
     }
-    line('ТРЕНИРОВКА',18,2);
+    line('ТРЕНИРОВКА',18,2,palette.accent);
     line(`${prettyDate(workout.date)} · ${labels[workout.preset] || 'Без предустановки'}`,12,3);
     if (workout.athleteName) line(`Имя: ${workout.athleteName}`);
     rule();
@@ -463,7 +484,7 @@
       const ex = byId[entry.exerciseId];
       if (!ex) continue;
       rule();
-      line(`${entry.slot ? `${entry.slot}: ` : ''}${ex.name}`,12,2);
+      line(`${entry.slot ? `${entry.slot}: ` : ''}${ex.name}`,12,2,palette.accent);
       line(`Ориентир: ${ex.scheme}`,9,2);
       entry.sets.forEach((set,index) => line(`Подход ${index+1}: ${set.weight === '' ? 'без указанного веса' : `${formatNumber(readNumber(set.weight))} кг`} × ${set.reps}`,10,1));
       const notes = [];
@@ -561,7 +582,7 @@
     hydrateForm(); renderCatalog(); renderHistory(); renderSettings();
     if (window.jspdf?.jsPDF && pdfFontBase64) {
       $('save-share').disabled = false;
-      $('pdf-status').textContent = 'PDF создаётся на этом устройстве. Если системная отправка недоступна, файл скачается.';
+      $('pdf-status').textContent = 'PDF использует текущие размер текста и тему; размер элементов меняет отступы. Если системная отправка недоступна, файл скачается.';
     } else $('pdf-status').textContent = 'Генератор PDF недоступен. Сохранение тренировки работает.';
     document.querySelectorAll('[data-nav]').forEach(button => button.addEventListener('click',() => switchView(button.dataset.nav)));
     $('presets').addEventListener('click',event => { const button=event.target.closest('[data-preset]'); if (button) selectPreset(button.dataset.preset); });
