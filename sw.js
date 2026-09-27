@@ -1,6 +1,6 @@
-const CACHE = 'training-journal-v1';
+const CACHE = 'training-journal-v2';
 const ASSETS = [
-  './', './index.html', './style.css', './app.js', './exercises.js',
+  './', './index.html', './style.css', './accessibility.css', './app.js', './exercises.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './lib/jspdf.umd.min.js', './fonts/font-data.js'
 ];

@@ -43,8 +43,16 @@
   function defaultDraft() {
     return {date:today(),preset:'',before:'',run:{target:'2',distance:'',time:'',feel:''},exercises:[],overall:'',after:'',liked:'',discomfort:'',next:''};
   }
+  function defaultPreferences() { return {fontSize:'normal',uiSize:'normal',theme:'light'}; }
+  function normalizePreferences(raw) {
+    return {
+      fontSize:['normal','large','largest'].includes(raw?.fontSize) ? raw.fontSize : 'normal',
+      uiSize:['normal','large','largest'].includes(raw?.uiSize) ? raw.uiSize : 'normal',
+      theme:['light','dark','contrast'].includes(raw?.theme) ? raw.theme : 'light'
+    };
+  }
   function defaultState() {
-    return {version:VERSION,profile:{name:''},workouts:[],draft:defaultDraft(),editingId:null,pausedDraft:null,lastBackupAt:null,lastBackupCount:0};
+    return {version:VERSION,profile:{name:''},preferences:defaultPreferences(),workouts:[],draft:defaultDraft(),editingId:null,pausedDraft:null,lastBackupAt:null,lastBackupCount:0};
   }
   function loadState() {
     try {
@@ -52,7 +60,7 @@
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       if (parsed.version !== VERSION || !Array.isArray(parsed.workouts) || !parsed.draft || !Array.isArray(parsed.draft.exercises) || !parsed.draft.run) throw new Error('Неподдерживаемый формат данных');
-      return {...defaultState(),...parsed,profile:{name:String(parsed.profile?.name || '').slice(0,50)}};
+      return {...defaultState(),...parsed,profile:{name:String(parsed.profile?.name || '').slice(0,50)},preferences:normalizePreferences(parsed.preferences)};
     } catch (error) {
       locked = true;
       try { rawUnreadable = localStorage.getItem(KEY) || ''; } catch { /* Storage can be disabled. */ }
@@ -404,8 +412,18 @@
   }
   function renderSettings() {
     $('athlete-name').value = state.profile.name || '';
+    $('font-size-setting').value = state.preferences.fontSize;
+    $('ui-size-setting').value = state.preferences.uiSize;
+    $('theme-setting').value = state.preferences.theme;
     $('profile-chip').textContent = state.profile.name || 'ЛИЧНЫЙ ЖУРНАЛ';
     $('backup-status').textContent = state.lastBackupAt ? `Последняя JSON-копия: ${prettyDate(state.lastBackupAt.slice(0,10))}` : 'JSON-копия ещё не скачивалась.';
+  }
+  function applyPreferences() {
+    const {fontSize,uiSize,theme} = state.preferences;
+    document.documentElement.dataset.fontSize = fontSize;
+    document.documentElement.dataset.uiSize = uiSize;
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#173c37' : theme === 'dark' ? '#101a15' : '#000000';
   }
   function pdfFilename(workout) { return `Тренировка_${workout.date}.pdf`; }
   function makePdf(workout) {
@@ -538,6 +556,7 @@
     } catch (error) { showAlert(`Импорт не выполнен: ${error.message}`); }
   }
   function initialize() {
+    applyPreferences();
     for (const id of ['before','run-feel','overall','after']) for (let n=1;n<=10;n++) $(id).insertAdjacentHTML('beforeend',`<option value="${n}">${n}/10</option>`);
     hydrateForm(); renderCatalog(); renderHistory(); renderSettings();
     if (window.jspdf?.jsPDF && pdfFontBase64) {
@@ -583,6 +602,9 @@
     $('catalog-list').addEventListener('click',event => { const button=event.target.closest('[data-tech]'); if (button) showTechnique(button.dataset.tech); });
     $('history-list').addEventListener('click',event => { const button=event.target.closest('[data-open-history]'); if (button) showWorkout(button.dataset.openHistory); });
     $('athlete-name').addEventListener('input',event => { state.profile.name=event.target.value.slice(0,50); $('profile-chip').textContent=state.profile.name || 'ЛИЧНЫЙ ЖУРНАЛ'; saveState(); });
+    for (const [id,key] of [['font-size-setting','fontSize'],['ui-size-setting','uiSize'],['theme-setting','theme']]) {
+      $(id).addEventListener('change',event => { state.preferences[key]=event.target.value; applyPreferences(); saveState(); });
+    }
     $('export-json').addEventListener('click',exportBackup);
     $('import-json').addEventListener('click',() => $('import-file').click());
     $('import-file').addEventListener('change',event => { importBackup(event.target.files?.[0]); event.target.value=''; });
