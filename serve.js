@@ -15,4 +15,4 @@ http.createServer((request,response) => {
     if (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 500).end(); return; }
     response.writeHead(200,{'Content-Type':`${types[path.extname(file)] || 'application/octet-stream'}; charset=utf-8`}).end(data);
   });
-}).listen(8000,'127.0.0.1',() => console.log('http://127.0.0.1:8000/'));
+}).listen(Number(process.env.PORT || 8000),'127.0.0.1',() => console.log(`http://127.0.0.1:${process.env.PORT || 8000}/`));

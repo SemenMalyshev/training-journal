@@ -1,8 +1,8 @@
-const CACHE = 'training-journal-v3';
+const CACHE = 'training-journal-v4';
 const ASSETS = [
   './', './index.html', './style.css', './accessibility.css', './app.js', './exercises.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
-  './lib/jspdf.umd.min.js', './fonts/font-data.js'
+  './lib/jspdf.umd.min.js', './lib/qrcode.js', './fonts/font-data.js'
 ];
 
 self.addEventListener('install', event => {
