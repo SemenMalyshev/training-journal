@@ -151,7 +151,8 @@
   }
   function plannedSlots(preset,duration) {
     const minutes = Number(duration);
-    const count = minutes >= 20 && minutes <= 240 ? Math.max(2,Math.min(templates[preset].length,Math.floor((minutes-10)/10))) : templates[preset].length;
+    // ponytail: approximate budget; reserve 5 minutes each for warm-up and core, 10 per other exercise.
+    const count = minutes >= 10 && minutes <= 240 ? Math.max(0,Math.min(templates[preset].length,Math.floor((minutes-10)/10))) : templates[preset].length;
     return [...templates[preset].slice(0,count),coreSlot];
   }
   function buildPreset(preset) {
@@ -225,9 +226,23 @@
     $('presets').innerHTML = Object.keys(labels).map(id => `<button class="preset ${state.draft.preset===id?'active':''} ${recommended===id?'recommended':''}" data-preset="${id}" aria-pressed="${state.draft.preset===id}"><strong>${labels[id]}</strong><small>${descriptions[id]}</small></button>`).join('');
     const current = state.draft.preset;
     $('preset-reason').textContent = current ? `${labels[current]} — только основа. Все предложенные упражнения можно заменить или убрать. Рекомендуемое направление подсвечено по истории ваших занятий.` : 'Выберите предустановку. Рекомендация основана на последнем завершённом занятии; выбрать другой вид тренировки можно всегда.';
+    renderDurationPlan();
+  }
+  function renderDurationPlan() {
+    const {preset,duration,exercises:rows} = state.draft;
+    const minutes = Number(duration);
+    $('rebuild-plan').disabled = !preset || preset === 'custom';
+    const valid = Number.isInteger(minutes) && minutes >= 10 && minutes <= 240;
+    $('duration-plan').hidden = !duration;
+    if (!duration) return;
+    if (!valid) { $('duration-plan').textContent = 'Укажите целое число от 10 до 240 минут.'; return; }
+    if (!preset || preset === 'custom') { $('duration-plan').textContent = 'Выберите направление для подбора упражнений по времени. В своей тренировке количество определяете вы.'; return; }
+    const count = plannedSlots(preset,duration).length;
+    $('duration-plan').textContent = `Ориентир на ${minutes} мин: ${count} силовых упр., включая пресс. Сейчас в списке: ${rows.length}. Пересобрать список можно кнопкой ниже.${minutes < 20 ? ' Очень короткий план: только пресс и короткая разминка. Сократите цель бега; стандартные 2 км в этот бюджет не заложены.' : ' Расчёт приблизительный: разминка около 5 мин, пресс около 5 мин, остальные упражнения около 10 мин каждое с отдыхом.'}`;
   }
   function selectPreset(preset) {
     if (!labels[preset]) return;
+    if (state.draft.duration && (!Number.isInteger(Number(state.draft.duration)) || Number(state.draft.duration) < 10 || Number(state.draft.duration) > 240)) return showAlert('Укажите длительность от 10 до 240 минут.');
     if (state.draft.exercises.length && !confirm('Заменить текущий список упражнений? Изменённый порядок и заполненные подходы будут удалены.')) return;
     state.draft.preset = preset;
     state.draft.exercises = buildPreset(preset);
@@ -236,6 +251,7 @@
   }
   function renderExercises() {
     const rows = state.draft.exercises;
+    renderDurationPlan();
     $('exercise-count').textContent = rows.length ? `${rows.length} предложено / выбрано` : 'Добавьте упражнения';
     $('exercise-list').innerHTML = rows.map((entry,index) => {
       const ex = byId[entry.exerciseId];
@@ -359,12 +375,13 @@
       } else state.draft.run.time = '';
     }
     if (run[field] || field === 'run-minutes' || field === 'run-seconds') renderPace();
+    if (field === 'duration') renderDurationPlan();
     saveState();
   }
   function cleanDraft() {
     const draft = state.draft;
     if (!validDate(draft.date)) throw new Error('Укажите корректную дату тренировки.');
-    if (draft.duration && (!Number.isInteger(Number(draft.duration)) || Number(draft.duration) < 20 || Number(draft.duration) > 240)) throw new Error('Укажите длительность от 20 до 240 минут.');
+    if (draft.duration && (!Number.isInteger(Number(draft.duration)) || Number(draft.duration) < 10 || Number(draft.duration) > 240)) throw new Error('Укажите длительность от 10 до 240 минут.');
     if (($('run-minutes').value && !/^\d{1,3}$/.test($('run-minutes').value)) || ($('run-seconds').value && (!/^\d{1,2}$/.test($('run-seconds').value) || Number($('run-seconds').value)>=60))) throw new Error('Проверьте минуты и секунды бега.');
     if (draft.run.time && !timeSeconds(draft.run.time)) throw new Error('Проверьте минуты и секунды бега.');
     if (draft.run.time && !(readNumber(draft.run.distance) > 0)) throw new Error('Для времени бега укажите фактическую дистанцию.');
@@ -575,8 +592,8 @@
     const run=raw.run || {};
     if (run.time && !timeSeconds(run.time)) throw new Error('Некорректное время бега в резервной копии.');
     for (const value of [run.target,run.distance]) if (value && (!Number.isFinite(readNumber(value)) || readNumber(value)<0 || readNumber(value)>1000)) throw new Error('Некорректная дистанция в резервной копии.');
-    const duration=safeText(raw.duration,3);
-    if (duration && (!Number.isInteger(Number(duration)) || Number(duration)<20 || Number(duration)>240)) throw new Error('Некорректная длительность в резервной копии.');
+    const duration=String(raw.duration ?? '').trim();
+    if (duration && (!Number.isInteger(Number(duration)) || Number(duration)<10 || Number(duration)>240)) throw new Error('Некорректная длительность в резервной копии.');
     return {id:isDraft?undefined:safeText(raw.id,100),createdAt:safeText(raw.createdAt || new Date().toISOString(),40),updatedAt:safeText(raw.updatedAt || new Date().toISOString(),40),athleteName:safeText(raw.athleteName,50),date:raw.date,preset:labels[raw.preset]?raw.preset:'',duration,before:safeText(raw.before,3),run:{target:safeText(run.target ?? '2',10),distance:safeText(run.distance,10),time:safeText(run.time,10),feel:safeText(run.feel,3)},exercises:raw.exercises.map(normalizeEntry),overall:safeText(raw.overall,3),after:safeText(raw.after,3),liked:safeText(raw.liked,500),discomfort:safeText(raw.discomfort,500),next:safeText(raw.next,500)};
   }
   function draftIsEmpty() {
@@ -619,7 +636,7 @@
     const bytes = Uint8Array.from(atob(token.replace(/-/g,'+').replace(/_/g,'/')),char => char.charCodeAt(0));
     const [version,preset,date,duration,entries] = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
     if (version !== 1 || !labels[preset] || !validDate(date) || !Array.isArray(entries) || !entries.length || entries.length > 30) throw new Error('Неподдерживаемый план.');
-    if (duration !== 0 && (!Number.isInteger(Number(duration)) || Number(duration)<20 || Number(duration)>240)) throw new Error('Некорректная длительность плана.');
+    if (duration !== 0 && (!Number.isInteger(Number(duration)) || Number(duration)<10 || Number(duration)>240)) throw new Error('Некорректная длительность плана.');
     const slots = [...templates[preset],coreSlot];
     const used = new Set();
     const exercises = entries.map(item => {
@@ -690,6 +707,7 @@
     } else $('pdf-status').textContent = 'Генератор PDF недоступен. Сохранение тренировки работает.';
     document.querySelectorAll('[data-nav]').forEach(button => button.addEventListener('click',() => switchView(button.dataset.nav)));
     $('presets').addEventListener('click',event => { const button=event.target.closest('[data-preset]'); if (button) selectPreset(button.dataset.preset); });
+    $('rebuild-plan').addEventListener('click',() => selectPreset(state.draft.preset));
     $('exercise-list').addEventListener('click',handleExerciseAction);
     $('exercise-list').addEventListener('input',handleExerciseInput);
     $('exercise-list').addEventListener('change',handleExerciseInput);
