@@ -152,6 +152,17 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .bottom-nav button { min-height: calc(50px * var(--ui-scale)); overflow-wrap: anywhere; line-height: 1.25; }
 .display-settings { display: grid; gap: calc(14px * var(--ui-scale)); margin-top: 14px; }
 .display-settings .field { max-width: 550px; }
+.warm-set-button { margin-top: 8px; }
+.set-group h4 { margin: 0 0 8px; font-size: inherit; }
+.sets-head span { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.effort-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.effort-field legend { font-size: calc(13px * var(--text-scale)); font-weight: 700; }
+.effort-options { display: grid; gap: calc(8px * var(--ui-scale)); }
+.effort-option { display: flex; align-items: center; gap: 10px; margin: 0; padding: calc(10px * var(--ui-scale)); border: 1px solid var(--control-border); border-radius: 12px; cursor: pointer; }
+.effort-option:has(input:checked) { background: var(--selected-bg); border-width: 2px; }
+.effort-option input { flex: none; width: 22px; height: 22px; min-height: 22px; margin: 0; padding: 0; accent-color: var(--focus); }
+.effort-option span { min-width: 0; overflow-wrap: anywhere; }
+.effort-option small { display: block; margin-top: 3px; font-weight: 400; color: var(--muted); }
 
 .topbar, .bottom-nav { background: var(--topbar-bg); border-color: var(--line); }
 .brand-mark, .btn-dark, .filter.active { background: var(--green); color: var(--button-text); }

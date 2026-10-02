@@ -34,6 +34,9 @@
     custom:[]
   };
   const coreSlot = {slot:'Пресс',ids:['exercise-17','exercise-18']};
+  const effortLabels = {'':'Не могу оценить',near:'Почти на пределе',some:'Ещё несколько',many:'Ещё много'};
+  const effortHints = {near:'Ни одного или максимум одно повторение',some:'Примерно 2–3 повторения',many:'Примерно 4 повторения и больше'};
+  const legacyEfforts = ['0','1','2','3+'];
   let locked = false;
   let rawUnreadable = '';
   let pdfFontBase64 = window.PDF_FONT_BASE64 || '';
@@ -178,7 +181,7 @@
     const complete = item => {
       const sets=item.entry.sets?.filter(set => set.kind === 'work') || [];
       const firstWeight=sets[0]?.weight;
-      return sets.length >= ex.minSets && sets.every(set => Number(set.reps) >= ex.maxReps && set.weight === firstWeight) && parseInt(item.entry.rir,10) >= 2 && item.entry.discomfort === 'no';
+      return sets.length >= ex.minSets && sets.every(set => Number(set.reps) >= ex.maxReps && set.weight === firstWeight) && ['some','many','2','3+'].includes(item.entry.rir) && item.entry.discomfort === 'no';
     };
     const workingWeight = item => {
       const sets=item?.entry.sets?.filter(set => set.kind === 'work') || [];
@@ -191,7 +194,7 @@
       if (ex.stepKg && Number.isFinite(weight) && weight > 0) return {text:`Дважды достигнут верх диапазона без дискомфорта. Можно попробовать ${formatNumber(weight+ex.stepKg)} кг — поправьте шаг под оборудование.`,warning:false};
       return {text:'Дважды достигнут верх диапазона. Можно попробовать более сложный вариант или добавить небольшую нагрузку.',warning:false};
     }
-    if (entry.rir === '0' || entry.rir === '1') return {text:'В прошлый раз запас повторений был небольшим. Сохраните нагрузку и технику.',warning:false};
+    if (['near','0','1'].includes(entry.rir)) return {text:'В прошлый раз подход был почти на пределе. Сохраните нагрузку и технику.',warning:false};
     if (Number.isFinite(weight) && weight > 0) return {text:`В прошлый раз рабочие подходы: ${formatNumber(weight)} кг. Пока можно сохранить вес и стремиться к дополнительному чистому повторению.`,warning:false};
     if (entry.sets?.some(set => !set.kind)) return {text:'В старой записи разминка не отделена от рабочих подходов. Укажите вес новых рабочих подходов сами.',warning:false};
     return {text:'Ориентируйтесь на прошлые повторы и старайтесь прибавить одно чистое повторение.',warning:false};
@@ -249,6 +252,24 @@
     saveState();
     renderPresets(); renderExercises();
   }
+  function effortLabel(value) {
+    return Object.hasOwn(effortLabels,value) ? effortLabels[value] : legacyEfforts.includes(value) ? `Старая оценка: ${value} повторений в запасе` : effortLabels[''];
+  }
+  function setGroups(entry) {
+    return [{kind:'warm',label:'Разминка'},{kind:'',label:'Старые подходы · тип не указан'},{kind:'work',label:'Основные подходы'}].map(group => ({...group,rows:entry.sets.map((set,index) => ({set,index})).filter(row => (row.set.kind || '') === group.kind)}));
+  }
+  function renderSetGroups(entry,isDumbbell) {
+    return setGroups(entry).filter(group => group.rows.length || group.kind === 'work').map(group => `<section class="sets set-group" data-set-group="${group.kind || 'legacy'}" aria-label="${escapeHtml(group.label)}"><h4>${group.label}</h4>${group.rows.length ? `<div class="sets-head"><span>№</span><span>${isDumbbell?'КГ / ГАНТЕЛЬ':'ВЕС, КГ'}</span><span>ПОВТОРЫ</span><span></span></div>` : '<p class="mini-note">Добавьте основной подход кнопкой ниже.</p>'}${group.rows.map(({set,index},number) => `<div class="set-row" data-set="${index}"><span class="set-index">${number+1}</span><input data-set-field="weight" type="number" min="0" step="0.5" inputmode="decimal" aria-label="${group.kind==='warm'?'Вес разминки':'Вес подхода'} ${number+1}" value="${escapeHtml(set.weight)}"><input data-set-field="reps" type="number" min="0" step="1" inputmode="numeric" aria-label="${group.kind==='warm'?'Повторы разминки':'Повторы подхода'} ${number+1}" value="${escapeHtml(set.reps)}"><button class="icon-btn" data-action="remove-set" aria-label="${group.kind==='warm'?'Удалить разминку':'Удалить подход'} ${number+1}">×</button></div>`).join('')}${group.kind===''?'<p class="mini-note">Тип этих старых подходов неизвестен. Они сохраняются в истории, но не используются для подбора рабочего веса.</p>':''}</section>`).join('');
+  }
+  function renderEffortField(entry) {
+    const values = ['near','some','many',''];
+    if (legacyEfforts.includes(entry.rir)) values.push(entry.rir);
+    return `<fieldset class="effort-field wide"><legend>После последнего основного подхода сколько ещё повторений ты смог бы сделать?</legend><p class="mini-note">Сразу, с тем же весом и нормальной техникой. Достаточно приблизительной оценки.</p><div class="effort-options">${values.map(value => `<label class="effort-option"><input type="radio" name="effort-${escapeHtml(entry.entryId)}" data-feedback="rir" value="${value}" ${entry.rir===value?'checked':''}><span>${escapeHtml(effortLabel(value))}${effortHints[value]?`<small>${effortHints[value]}</small>`:''}</span></label>`).join('')}</div></fieldset>`;
+  }
+  function renderRecordedSets(entry) {
+    const unit = /гантел/i.test(byId[entry.exerciseId]?.name || '') ? 'кг/гантель' : 'кг';
+    return setGroups(entry).filter(group => group.rows.length).map(group => `<h4>${group.label}</h4>${group.rows.map(({set},number) => `<div class="data-row"><span>Подход ${number+1}</span><span>${set.weight === '' ? 'без веса' : `${escapeHtml(set.weight)} ${unit}`} × ${escapeHtml(set.reps)}</span></div>`).join('')}`).join('');
+  }
   function renderExercises() {
     const rows = state.draft.exercises;
     renderDurationPlan();
@@ -263,9 +284,10 @@
         <div class="exercise-top" style="margin-top:11px"><div><div class="exercise-name">${escapeHtml(ex.name)}</div><div class="exercise-scheme">${escapeHtml(ex.muscles)}</div></div></div>
         <div class="exercise-actions"><button class="btn btn-ghost btn-small" data-action="tech">Техника ↗</button><button class="btn btn-ghost btn-small" data-action="replace">Заменить</button><button class="btn btn-ghost btn-small danger-button" data-action="remove">Убрать</button>${index>0?'<button class="btn btn-outline btn-small" data-action="up" aria-label="Переместить упражнение выше">↑ Выше</button>':''}${index<rows.length-1?'<button class="btn btn-outline btn-small" data-action="down" aria-label="Переместить упражнение ниже">↓ Ниже</button>':''}</div>
         <div class="suggestion ${suggestion.warning?'warning':''}"><strong>Подсказка:</strong> ${escapeHtml(suggestion.text)}</div>
-        <div class="sets"><div class="sets-head"><span>№</span><span>${isDumbbell?'КГ / ГАНТЕЛЬ':'ВЕС, КГ'}</span><span>ПОВТОРЫ</span><span></span></div>${entry.sets.map((set,setIndex) => `<div class="set-row" data-set="${setIndex}"><span class="set-index">${setIndex+1}</span><input data-set-field="weight" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Вес подхода ${setIndex+1}" value="${escapeHtml(set.weight)}"><input data-set-field="reps" type="number" min="0" step="1" inputmode="numeric" aria-label="Повторы подхода ${setIndex+1}" value="${escapeHtml(set.reps)}"><button class="icon-btn" data-action="remove-set" aria-label="Удалить подход ${setIndex+1}">×</button><select class="set-kind" data-set-field="kind" aria-label="Тип подхода ${setIndex+1}"><option value="" ${!set.kind?'selected':''}>Тип не указан (старая запись)</option><option value="warm" ${set.kind==='warm'?'selected':''}>Разминочный подход</option><option value="work" ${set.kind==='work'?'selected':''}>Рабочий подход</option></select></div>`).join('')}</div>
+        <button class="btn btn-outline btn-small warm-set-button" data-action="add-warm-set">+ Разминочный подход</button>
+        ${renderSetGroups(entry,isDumbbell)}
         <button class="btn btn-light btn-small" data-action="add-set">+ Добавить подход</button>
-        <hr class="subtle-divider"><div class="exercise-feedback"><div class="field"><label>Повторы в запасе после последнего рабочего подхода</label><select data-feedback="rir"><option value="">Не отмечено</option>${['0','1','2','3+'].map(value => `<option value="${value}" ${entry.rir===value?'selected':''}>${value}</option>`).join('')}</select></div><div class="field"><label>Боль или дискомфорт?</label><select data-feedback="discomfort"><option value="">Не отмечено</option><option value="no" ${entry.discomfort==='no'?'selected':''}>Нет</option><option value="yes" ${entry.discomfort==='yes'?'selected':''}>Да</option></select></div><div class="field"><label>Понравилось?</label><select data-feedback="liked"><option value="">Не отмечено</option><option value="yes" ${entry.liked==='yes'?'selected':''}>Да</option><option value="no" ${entry.liked==='no'?'selected':''}>Нет</option></select></div><div class="field"><label>Было удобно?</label><select data-feedback="comfort"><option value="">Не отмечено</option><option value="yes" ${entry.comfort==='yes'?'selected':''}>Да</option><option value="no" ${entry.comfort==='no'?'selected':''}>Нет</option></select></div><div class="field wide"><label>Заметка по упражнению</label><input data-feedback="note" type="text" maxlength="500" value="${escapeHtml(entry.note)}" placeholder="Техника, ощущения, что изменить"></div></div>
+        <hr class="subtle-divider"><div class="exercise-feedback">${renderEffortField(entry)}<div class="field"><label>Боль или дискомфорт?</label><select data-feedback="discomfort"><option value="">Не отмечено</option><option value="no" ${entry.discomfort==='no'?'selected':''}>Нет</option><option value="yes" ${entry.discomfort==='yes'?'selected':''}>Да</option></select></div><div class="field"><label>Понравилось?</label><select data-feedback="liked"><option value="">Не отмечено</option><option value="yes" ${entry.liked==='yes'?'selected':''}>Да</option><option value="no" ${entry.liked==='no'?'selected':''}>Нет</option></select></div><div class="field"><label>Было удобно?</label><select data-feedback="comfort"><option value="">Не отмечено</option><option value="yes" ${entry.comfort==='yes'?'selected':''}>Да</option><option value="no" ${entry.comfort==='no'?'selected':''}>Нет</option></select></div><div class="field wide"><label>Заметка по упражнению</label><input data-feedback="note" type="text" maxlength="500" value="${escapeHtml(entry.note)}" placeholder="Техника, ощущения, что изменить"></div></div>
       </article>`;
     }).join('');
     if (state.draft.preset) {
@@ -342,9 +364,10 @@
     if (action === 'remove') state.draft.exercises.splice(index,1);
     if (action === 'up' && index > 0) [state.draft.exercises[index-1],state.draft.exercises[index]] = [state.draft.exercises[index],state.draft.exercises[index-1]];
     if (action === 'down' && index < state.draft.exercises.length-1) [state.draft.exercises[index+1],state.draft.exercises[index]] = [state.draft.exercises[index],state.draft.exercises[index+1]];
-    if (action === 'add-set') {
+    if (action === 'add-set' || action === 'add-warm-set') {
       if (entry.sets.length >= 20) return showAlert('Для одного упражнения можно записать не более 20 подходов.');
-      entry.sets.push({kind:'work',weight:entry.sets.at(-1)?.weight || '',reps:''});
+      if (action === 'add-warm-set') entry.sets.push({kind:'warm',weight:'',reps:''});
+      else entry.sets.push({kind:'work',weight:entry.sets.filter(set => set.kind === 'work').at(-1)?.weight || '',reps:''});
     }
     if (action === 'remove-set') entry.sets.splice(Number(button.closest('[data-set]').dataset.set),1);
     saveState(); renderExercises();
@@ -451,7 +474,7 @@
     const workout = state.workouts.find(item => item.id === id);
     if (!workout) return;
     const run = workout.run?.distance ? `<div class="data-row"><span>Бег</span><span>${escapeHtml(workout.run.distance)} км${workout.run.time ? ` · ${escapeHtml(workout.run.time)}` : ''}${workout.run.time && timeSeconds(workout.run.time) ? `<br>${formatPace(timeSeconds(workout.run.time),readNumber(workout.run.distance))}` : ''}</span></div>` : '';
-    const entries = workout.exercises.map(entry => `<h3>${escapeHtml(byId[entry.exerciseId]?.name || 'Упражнение')}</h3>${entry.sets.map(set => `<div class="data-row"><span>${set.kind==='warm'?'Разминка':set.kind==='work'?'Рабочий':'Подход'}</span><span>${set.weight === '' ? 'без веса' : `${escapeHtml(set.weight)} ${/гантел/i.test(byId[entry.exerciseId]?.name || '')?'кг/гантель':'кг'}`} × ${escapeHtml(set.reps)}</span></div>`).join('')}<p class="mini-note">Запас: ${escapeHtml(entry.rir || '—')} · Дискомфорт: ${entry.discomfort==='yes'?'да':entry.discomfort==='no'?'нет':'—'}${entry.note?`<br>${escapeHtml(entry.note)}`:''}</p>`).join('');
+    const entries = workout.exercises.map(entry => `<h3>${escapeHtml(byId[entry.exerciseId]?.name || 'Упражнение')}</h3>${renderRecordedSets(entry)}<p class="mini-note">После основного подхода: ${escapeHtml(effortLabel(entry.rir || ''))} · Дискомфорт: ${entry.discomfort==='yes'?'да':entry.discomfort==='no'?'нет':'—'}${entry.note?`<br>${escapeHtml(entry.note)}`:''}</p>`).join('');
     openSheet(labels[workout.preset] || 'ТРЕНИРОВКА',`Тренировка ${prettyDate(workout.date)}`,`<div class="detail-block">${workout.athleteName?`<p><strong>${escapeHtml(workout.athleteName)}</strong></p>`:''}${workout.duration?`<p>Планировалось: ${escapeHtml(workout.duration)} мин</p>`:''}${run}${entries || '<p>Силовых упражнений не было.</p>'}${workout.overall?`<p>Общая нагрузка: ${escapeHtml(workout.overall)}/10</p>`:''}${workout.liked?`<p><strong>Понравилось:</strong> ${escapeHtml(workout.liked)}</p>`:''}${workout.discomfort?`<p><strong>Дискомфорт:</strong> ${escapeHtml(workout.discomfort)}</p>`:''}${workout.next?`<p><strong>Следующий раз:</strong> ${escapeHtml(workout.next)}</p>`:''}<div class="actions"><button class="btn btn-dark" data-history-action="download" data-id="${escapeHtml(id)}">Скачать PDF</button><button class="btn btn-primary" data-history-action="share" data-id="${escapeHtml(id)}">Поделиться PDF</button></div><div class="actions"><button class="btn btn-outline" data-history-action="edit" data-id="${escapeHtml(id)}">Исправить запись</button></div></div>`);
   }
   function renderSettings() {
@@ -530,9 +553,12 @@
       rule();
       line(`${entry.slot ? `${entry.slot}: ` : ''}${ex.name}`,12,2,palette.accent);
       line(`Ориентир: ${ex.scheme}`,9,2);
-      entry.sets.forEach((set,index) => line(`${set.kind==='warm'?'Разминка':set.kind==='work'?'Рабочий подход':'Подход'} ${index+1}: ${set.weight === '' ? 'без указанного веса' : `${formatNumber(readNumber(set.weight))} ${/гантел/i.test(ex.name)?'кг/гантель':'кг'}`} × ${set.reps}`,10,1));
+      for (const group of setGroups(entry).filter(group => group.rows.length)) {
+        line(group.label,11,2);
+        group.rows.forEach(({set},index) => line(`Подход ${index+1}: ${set.weight === '' ? 'без указанного веса' : `${formatNumber(readNumber(set.weight))} ${/гантел/i.test(ex.name)?'кг/гантель':'кг'}`} × ${set.reps}`,10,1));
+      }
       const notes = [];
-      if (entry.rir) notes.push(`Запас чистых повторений: ${entry.rir}`);
+      if (entry.rir) notes.push(`После основного подхода: ${effortLabel(entry.rir)}`);
       if (entry.discomfort) notes.push(`Дискомфорт: ${entry.discomfort==='yes'?'да':'нет'}`);
       if (entry.liked) notes.push(`Понравилось: ${entry.liked==='yes'?'да':'нет'}`);
       if (entry.comfort) notes.push(`Было удобно: ${entry.comfort==='yes'?'да':'нет'}`);
@@ -584,7 +610,7 @@
       if (weight && (!Number.isFinite(readNumber(weight)) || readNumber(weight)<0 || readNumber(weight)>2000)) throw new Error('Некорректный вес в резервной копии.');
       if (reps && (!Number.isInteger(Number(reps)) || Number(reps)<1 || Number(reps)>100)) throw new Error('Некорректные повторы в резервной копии.');
       return {kind:['warm','work'].includes(set?.kind) ? set.kind : '',weight,reps};
-    }),rir:['','0','1','2','3+'].includes(raw.rir) ? raw.rir : '',discomfort:['','yes','no'].includes(raw.discomfort) ? raw.discomfort : '',liked:['','yes','no'].includes(raw.liked) ? raw.liked : '',comfort:['','yes','no'].includes(raw.comfort) ? raw.comfort : '',note:safeText(raw.note,500)};
+    }),rir:['','near','some','many',...legacyEfforts].includes(raw.rir) ? raw.rir : '',discomfort:['','yes','no'].includes(raw.discomfort) ? raw.discomfort : '',liked:['','yes','no'].includes(raw.liked) ? raw.liked : '',comfort:['','yes','no'].includes(raw.comfort) ? raw.comfort : '',note:safeText(raw.note,500)};
   }
   function normalizeWorkout(raw,isDraft=false) {
     if (!raw || !validDate(raw.date) || !Array.isArray(raw.exercises) || raw.exercises.length>30) throw new Error('Некорректная тренировка в резервной копии.');
